@@ -79,6 +79,15 @@ export class Metrics {
         title: tiltDiag?.message ?? 'Gravity-feed güvenli aralık: 20–30°',
       },
     ];
+    if (p.columnMode === 'custom' && p.nColumns > 1) {
+      const overflow2 = has('COLUMN_WIDTHS_OVERFLOW');
+      chips.push({
+        label: 'Kolonlar',
+        value: d.columnWidths.map((w) => (w * 100).toFixed(0)).join('/') + ' cm',
+        bad: !!overflow2,
+        title: overflow2?.message ?? 'Özel kolon genişlikleri (son kolon = kalan)',
+      });
+    }
     if (medErr) {
       chips.push({ label: 'İlaç sığma', value: '✗', bad: true, title: medErr.message });
     }

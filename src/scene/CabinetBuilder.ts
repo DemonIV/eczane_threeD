@@ -133,10 +133,10 @@ export class CabinetBuilder {
     for (const sy of [0, 1]) for (const sx of [-1, 1]) {
       mats.push(beamMatrix(sx * hx, sy * (H - t) + t / 2, 0, t, t, D));
     }
-    // kolon ayırıcı dikmeler (ön+arka), kullanılabilir bölge sınırlarında
+    // kolon ayırıcı dikmeler (ön+arka), gerçek kolon sınırlarında (eşit veya özel genişlik)
     const uW = d.usableWidth;
-    for (let i = 0; i <= p.nColumns; i++) {
-      const x = -uW / 2 + i * d.columnWidth;
+    const boundaries = [...d.columnLefts, uW / 2];
+    for (const x of boundaries) {
       for (const sz of [-1, 1]) {
         mats.push(beamMatrix(x, H / 2, sz * (hz - t), t * 0.8, H - 2 * t, t * 0.8));
       }
@@ -167,7 +167,6 @@ export class CabinetBuilder {
     const tilt = degToRad(p.tiltDeg);
     const rot = new THREE.Matrix4().makeRotationX(tilt);
     const zBack = -p.D / 2 + 0.02;
-    const uW = d.usableWidth;
 
     // Kutu bütçesi: toplam ilaç tavanı aşarsa kanal başına gösterimi orantıla (SPEC §3.3 mobil).
     const boxBudgetScale = d.totalMeds > MAX_BOX_INSTANCES ? MAX_BOX_INSTANCES / d.totalMeds : 1;
@@ -175,18 +174,10 @@ export class CabinetBuilder {
     p.groups.forEach((g, gi) => {
       if (!g.enabled || g.nRows <= 0) return;
       const gd = d.groups[gi];
-      const section = buildGroupSection(g, d.columnWidth);
-      if (section.channelCount === 0) return;
-
-      // U-kesit → THREE.Shape → Extrude (SPEC §2.8: kutu-yaklaşımı DEĞİL, gerçek profil)
-      const shape = new THREE.Shape(section.points.map((q) => new THREE.Vector2(q.x, q.y)));
-      const geo = new THREE.ExtrudeGeometry(shape, { depth: d.L, bevelEnabled: false });
-      this.disposables.push(geo);
-
+      if (gd.rowChannels === 0) return;
       const shelfRows = d.shelves.filter((s) => s.groupIndex === gi);
-      const shelfMesh = new THREE.InstancedMesh(geo, ALU_DARK, shelfRows.length * p.nColumns);
 
-      // kutu instanced mesh
+      // kutu instanced mesh — grup başına tek mesh (kolon farkı sadece konumda)
       const medGeo = new THREE.BoxGeometry(g.med.w, g.med.h, g.med.len);
       this.disposables.push(medGeo);
       const medMat = new THREE.MeshStandardMaterial({
@@ -199,44 +190,69 @@ export class CabinetBuilder {
         gd.medsPerChannel > 0 ? 1 : 0,
         Math.floor(gd.medsPerChannel * boxBudgetScale),
       );
-      const boxCount = shelfRows.length * p.nColumns * section.channelCount * medsShown;
-      const boxMesh = new THREE.InstancedMesh(medGeo, medMat, boxCount);
-
-      let si = 0;
+      const boxMesh = new THREE.InstancedMesh(
+        medGeo,
+        medMat,
+        shelfRows.length * gd.rowChannels * medsShown,
+      );
       let bi = 0;
       const tmp = new THREE.Matrix4();
       const local = new THREE.Matrix4();
-      for (const shelf of shelfRows) {
-        for (let c = 0; c < p.nColumns; c++) {
-          const colLeft = -uW / 2 + c * d.columnWidth;
-          const xLeft = colLeft + (d.columnWidth - section.totalWidth) / 2;
-          // raf: yerel (0,0,0)=arka-alt köşe → dünya (xLeft, frontY+rise, zBack), X ekseninde +α
-          const shelfM = new THREE.Matrix4()
-            .makeTranslation(xLeft, shelf.frontY + d.rise, zBack)
-            .multiply(rot);
-          shelfMesh.setMatrixAt(si++, shelfM);
 
-          for (let k = 0; k < section.channelCount; k++) {
-            const cx = k * section.xPitch + g.flangeThickness + g.channelInnerWidth / 2;
-            for (let s = 0; s < medsShown; s++) {
-              // öndeki kutu s=0: yerel z = L - (s+0.5)*medLen (kutular öne yaslı — gravity feed)
-              local.makeTranslation(
-                cx,
-                g.baseThickness + g.med.h / 2 + 0.002,
-                d.L - (s + 0.5) * g.med.len,
-              );
-              tmp.copy(shelfM).multiply(local);
-              boxMesh.setMatrixAt(bi++, tmp);
+      // Kolonları oluk sayısına göre grupla: aynı sayı = aynı kesit geometrisi (önbellek).
+      const byCount = new Map<number, number[]>();
+      gd.channelsPerColumn.forEach((cnt, c) => {
+        if (cnt < 1) return;
+        const list = byCount.get(cnt) ?? [];
+        list.push(c);
+        byCount.set(cnt, list);
+      });
+
+      for (const [cnt, cols] of byCount) {
+        // U-kesit → THREE.Shape → Extrude (SPEC §2.8: kutu-yaklaşımı DEĞİL, gerçek profil)
+        const section = buildGroupSection(g, d.columnWidths[cols[0]]);
+        if (section.channelCount !== cnt) continue; // güvenlik: hesapla tutarlı olmalı
+        const shape = new THREE.Shape(section.points.map((q) => new THREE.Vector2(q.x, q.y)));
+        const geo = new THREE.ExtrudeGeometry(shape, { depth: d.L, bevelEnabled: false });
+        this.disposables.push(geo);
+        const shelfMesh = new THREE.InstancedMesh(geo, ALU_DARK, shelfRows.length * cols.length);
+
+        let si = 0;
+        for (const shelf of shelfRows) {
+          for (const c of cols) {
+            const xLeft = d.columnLefts[c] + (d.columnWidths[c] - section.totalWidth) / 2;
+            // raf: yerel (0,0,0)=arka-alt köşe → dünya (xLeft, frontY+rise, zBack), X ekseninde +α
+            const shelfM = new THREE.Matrix4()
+              .makeTranslation(xLeft, shelf.frontY + d.rise, zBack)
+              .multiply(rot);
+            shelfMesh.setMatrixAt(si++, shelfM);
+
+            for (let k = 0; k < cnt; k++) {
+              const cx = k * section.xPitch + g.flangeThickness + g.channelInnerWidth / 2;
+              for (let s = 0; s < medsShown; s++) {
+                // öndeki kutu s=0: yerel z = L - (s+0.5)*medLen (kutular öne yaslı — gravity feed)
+                local.makeTranslation(
+                  cx,
+                  g.baseThickness + g.med.h / 2 + 0.002,
+                  d.L - (s + 0.5) * g.med.len,
+                );
+                tmp.copy(shelfM).multiply(local);
+                boxMesh.setMatrixAt(bi++, tmp);
+              }
             }
           }
         }
+        shelfMesh.instanceMatrix.needsUpdate = true;
+        this.disposables.push(shelfMesh);
+        this.content.add(shelfMesh);
       }
-      shelfMesh.instanceMatrix.needsUpdate = true;
+
+      boxMesh.count = bi; // güvenlik: yerleşenden fazlasını çizme
       boxMesh.instanceMatrix.needsUpdate = true;
-      this.disposables.push(shelfMesh, boxMesh);
+      this.disposables.push(boxMesh);
       boxMesh.visible = this.showBoxes;
       this.boxMeshes.push(boxMesh);
-      this.content.add(shelfMesh, boxMesh);
+      this.content.add(boxMesh);
     });
   }
 

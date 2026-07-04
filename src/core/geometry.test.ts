@@ -108,13 +108,13 @@ describe('grup-bazlı (heterojen) — SPEC varsayılan senaryo n=6/9/10, pay30/3
     expect(d.deficit).toBeGreaterThan(0);
   });
 
-  it('kanal kırılımı: Büyük 12/raf→216 · Orta 15/raf→405 · Küçük 22/raf→660 · toplam 1281', () => {
+  it('kanal kırılımı: Büyük 12/kolon→216 · Orta 15/kolon→405 · Küçük 22/kolon→660 · toplam 1281', () => {
     const byId = Object.fromEntries(d.groups.map((g) => [g.id, g]));
-    expect(byId.large.channelsPerRow).toBe(12);
+    expect(byId.large.channelsPerColumn).toEqual([12, 12, 12]);
     expect(byId.large.channels).toBe(216);
-    expect(byId.medium.channelsPerRow).toBe(15);
+    expect(byId.medium.channelsPerColumn).toEqual([15, 15, 15]);
     expect(byId.medium.channels).toBe(405);
-    expect(byId.small.channelsPerRow).toBe(22);
+    expect(byId.small.channelsPerColumn).toEqual([22, 22, 22]);
     expect(byId.small.channels).toBe(660);
     expect(d.totalChannels).toBe(1281);
   });
@@ -175,5 +175,44 @@ describe('yerleşim ve tavan kontrolü', () => {
 
   it('usableHeight yardımcı fonksiyonu', () => {
     expect(usableHeight({ H: 2.5, topMargin: 0.3, bottomMargin: 0.3, topServiceCut: 0.05 })).toBeCloseTo(1.85, 9);
+  });
+});
+
+describe('özel kolon genişlikleri (columnMode=custom, son kolon = kalan)', () => {
+  it('150/100 cm girilirse son kolon 90 cm; kolon başına oluk sayısı farklı', () => {
+    const p = defaultParams(); // uW = 400-60 = 340
+    p.columnMode = 'custom';
+    p.columnWidths = [1.5, 1.0];
+    const d = computeDerived(p);
+    expect(d.columnWidths.map((w) => Math.round(w * 100))).toEqual([150, 100, 90]);
+    // kolon sol kenarları: -170, -20, +80 cm
+    expect(d.columnLefts.map((x) => Math.round(x * 100))).toEqual([-170, -20, 80]);
+    const byId = Object.fromEntries(d.groups.map((g) => [g.id, g]));
+    // Büyük xPitch=9.1: floor(150/9.1)=16, floor(100/9.1)=10, floor(90/9.1)=9
+    expect(byId.large.channelsPerColumn).toEqual([16, 10, 9]);
+    expect(byId.large.rowChannels).toBe(35);
+    expect(byId.large.channels).toBe(6 * 35);
+    // Orta xPitch=7.1: 21/14/12 · Küçük xPitch=5.1: 29/19/17
+    expect(byId.medium.channelsPerColumn).toEqual([21, 14, 12]);
+    expect(byId.small.channelsPerColumn).toEqual([29, 19, 17]);
+    // toplam = Σ nRows*rowChannels
+    expect(d.totalChannels).toBe(6 * 35 + 9 * 47 + 10 * 65);
+  });
+
+  it('equal modda columnWidths yok sayılır', () => {
+    const p = defaultParams();
+    p.columnWidths = [3.0, 0.1]; // saçma değerler — equal modda etkisiz olmalı
+    const d = computeDerived(p);
+    expect(d.columnWidths.every((w) => Math.abs(w - d.usableWidth / 3) < 1e-9)).toBe(true);
+  });
+
+  it('kolonlar taşarsa son kolon negatif kalan alır (validate hata üretir)', () => {
+    const p = defaultParams();
+    p.columnMode = 'custom';
+    p.columnWidths = [2.0, 1.6]; // 360 > 340
+    const d = computeDerived(p);
+    expect(d.columnWidths[2]).toBeLessThan(0);
+    // negatif kolonda hiçbir grup kanal alamaz
+    for (const g of d.groups) expect(g.channelsPerColumn[2]).toBe(0);
   });
 });

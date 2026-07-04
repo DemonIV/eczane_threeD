@@ -100,17 +100,19 @@ export class RobotRig {
   /** Rastgele bir kanaldan ilaç getirme animasyonu başlatır. */
   dispense(p: CabinetParams, d: Derived, drop: DropInfo | null): void {
     if (this.busy || d.shelves.length === 0 || !drop) return;
-    // rastgele raf + kolon + kanal seç
+    // rastgele raf + (oluğu olan) kolon + kanal seç
     const shelf = d.shelves[Math.floor(Math.random() * d.shelves.length)];
     const g = p.groups[shelf.groupIndex];
     const gd = d.groups[shelf.groupIndex];
-    if (gd.channelsPerRow < 1) return;
-    const col = Math.floor(Math.random() * p.nColumns);
-    const k = Math.floor(Math.random() * gd.channelsPerRow);
+    const validCols = gd.channelsPerColumn
+      .map((cnt, i) => ({ cnt, i }))
+      .filter((x) => x.cnt > 0);
+    if (validCols.length === 0) return;
+    const { cnt, i: col } = validCols[Math.floor(Math.random() * validCols.length)];
+    const k = Math.floor(Math.random() * cnt);
 
-    const totalWidth = gd.channelsPerRow * gd.xPitch;
-    const colLeft = -d.usableWidth / 2 + col * d.columnWidth;
-    const xLeft = colLeft + (d.columnWidth - totalWidth) / 2;
+    const totalWidth = cnt * gd.xPitch;
+    const xLeft = d.columnLefts[col] + (d.columnWidths[col] - totalWidth) / 2;
     const pickX = xLeft + k * gd.xPitch + g.flangeThickness + g.channelInnerWidth / 2;
     const pickY = shelf.frontY + gd.sectionHeight / 2;
 

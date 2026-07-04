@@ -71,6 +71,25 @@ export function autoTransitionGap(groups: GroupParams[], tiltRad: number): numbe
 }
 
 /** Tüm türetilmiş değerleri tek geçişte hesaplar. UI/scene yalnızca bunu çağırır. */
+/**
+ * Kolon genişlikleri: equal modda eşit bölüşüm; custom modda ilk n-1 kolon
+ * kullanıcı değeri (eksikse eşit pay), SON kolon = kalan. Kalan ≤ 0 olabilir —
+ * validate katmanı bunu hata olarak raporlar, kapasitede 0 sayılır.
+ */
+export function resolveColumnWidths(p: CabinetParams, uW: number): number[] {
+  const n = Math.max(0, Math.floor(p.nColumns));
+  if (n === 0) return [];
+  const equal = uW / n;
+  if (p.columnMode !== 'custom' || n === 1) return Array(n).fill(equal);
+  const firsts: number[] = [];
+  for (let i = 0; i < n - 1; i++) {
+    const v = p.columnWidths[i];
+    firsts.push(Number.isFinite(v) && v! > 0 ? v! : equal);
+  }
+  const rem = uW - firsts.reduce((s, x) => s + x, 0);
+  return [...firsts, rem];
+}
+
 export function computeDerived(p: CabinetParams): Derived {
   const tilt = degToRad(p.tiltDeg);
   const cosT = Math.cos(tilt);
@@ -80,6 +99,15 @@ export function computeDerived(p: CabinetParams): Derived {
   const uH = usableHeight(p);
   const uW = p.W - 2 * p.sideMargin;
   const colW = p.nColumns > 0 ? uW / p.nColumns : 0;
+  const columnWidths = resolveColumnWidths(p, uW);
+  const columnLefts: number[] = [];
+  {
+    let x = -uW / 2;
+    for (const w of columnWidths) {
+      columnLefts.push(x);
+      x += w;
+    }
+  }
   const gap =
     p.transitionGapOverride !== null && p.transitionGapOverride >= 0
       ? p.transitionGapOverride
@@ -90,9 +118,13 @@ export function computeDerived(p: CabinetParams): Derived {
     const pitch = nestedPitch(sec, tilt);
     const xPitch = channelPitchX(g);
     const active = g.enabled && g.nRows > 0;
-    const channelsPerRow = active && xPitch > 0 && colW > 0 ? Math.floor(colW / xPitch) : 0;
+    // kolon başına oluk: dar kolona az, geniş kolona çok sığar (SPEC §2.4 kolon bazında)
+    const channelsPerColumn = columnWidths.map((w) =>
+      active && xPitch > 0 && w > 0 ? Math.floor((w + EPS) / xPitch) : 0,
+    );
+    const rowChannels = channelsPerColumn.reduce((s, x) => s + x, 0);
     const medsPerChannel = active && g.med.len > 0 ? Math.floor((L + EPS) / g.med.len) : 0;
-    const channels = active ? g.nRows * channelsPerRow * p.nColumns : 0;
+    const channels = active ? g.nRows * rowChannels : 0;
     const meds = channels * medsPerChannel;
     return {
       id: g.id,
@@ -102,7 +134,8 @@ export function computeDerived(p: CabinetParams): Derived {
       sectionHeight: sec,
       pitch,
       xPitch,
-      channelsPerRow,
+      channelsPerColumn,
+      rowChannels,
       medsPerChannel,
       channels,
       meds,
@@ -160,6 +193,8 @@ export function computeDerived(p: CabinetParams): Derived {
     usableHeight: uH,
     usableWidth: uW,
     columnWidth: colW,
+    columnWidths,
+    columnLefts,
     transitionGap: gap,
     cosTilt: cosT,
     sinTilt: sinT,

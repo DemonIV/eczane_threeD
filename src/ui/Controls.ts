@@ -81,6 +81,7 @@ export class Controls {
   private diagListEl: HTMLElement | null = null;
   private suggestionsEl: HTMLElement | null = null;
   private gapAutoLabel: HTMLElement | null = null;
+  private colRemainderEl: HTMLElement | null = null;
 
   constructor(
     private tabsEl: HTMLElement,
@@ -98,6 +99,7 @@ export class Controls {
     this.groupStatEls.clear();
     this.groupSvgEls.clear();
     this.groupDiagEls.clear();
+    this.colRemainderEl = null;
 
     for (const t of TABS) {
       const btn = document.createElement('button');
@@ -138,8 +140,66 @@ export class Controls {
       this.cb.onPatch({ D: v / 100 }),
     );
     sliderRow(s, { label: 'Kolon sayısı', min: 1, max: 6, step: 1, unit: 'adet', value: p.nColumns }, (v) =>
-      this.cb.onPatch({ nColumns: Math.round(v) }),
+      // özel modda kolon slider'larının sayısı değişir → panel yeniden kurulur
+      this.cb.onPatch({ nColumns: Math.round(v) }, undefined, {
+        rebuild: this.getParams().columnMode === 'custom',
+      }),
     );
+
+    // --- Kolon genişlikleri: eşit veya kolon başına özel (son kolon = kalan) ---
+    const sc = section(pane, 'Kolon genişlikleri');
+    const eqWrap = document.createElement('label');
+    eqWrap.className = 'check-row';
+    const eq = document.createElement('input');
+    eq.type = 'checkbox';
+    eq.checked = p.columnMode === 'equal';
+    eqWrap.appendChild(eq);
+    const eqTxt = document.createElement('span');
+    eqTxt.textContent = 'Eşit böl (kullanılabilir genişlik / kolon sayısı)';
+    eqWrap.appendChild(eqTxt);
+    sc.appendChild(eqWrap);
+    eq.addEventListener('change', () => {
+      if (eq.checked) {
+        this.cb.onPatch({ columnMode: 'equal' }, undefined, { rebuild: true });
+      } else {
+        // özel moda geçiş: mevcut eşit genişliklerle başla (ilk n-1 kolon)
+        const d = this.getDerived();
+        this.cb.onPatch(
+          { columnMode: 'custom', columnWidths: d.columnWidths.slice(0, -1) },
+          undefined,
+          { rebuild: true },
+        );
+      }
+    });
+
+    if (p.columnMode === 'custom' && p.nColumns > 1) {
+      const d = this.getDerived();
+      for (let i = 0; i < p.nColumns - 1; i++) {
+        const cur = (p.columnWidths[i] ?? d.columnWidths[i]) * 100;
+        sliderRow(
+          sc,
+          { label: `${i + 1}. kolon`, min: 10, max: Math.max(50, Math.round(d.usableWidth * 100)), step: 1, unit: 'cm', value: cur },
+          (v) => {
+            const q = this.getParams();
+            const widths = [...q.columnWidths];
+            for (let j = 0; j < q.nColumns - 1; j++) {
+              if (!Number.isFinite(widths[j])) widths[j] = this.getDerived().columnWidths[j];
+            }
+            widths[i] = v / 100;
+            this.cb.onPatch({ columnWidths: widths });
+          },
+        );
+      }
+      const rem = document.createElement('div');
+      rem.className = 'col-remainder';
+      sc.appendChild(rem);
+      this.colRemainderEl = rem;
+    } else if (p.columnMode === 'custom') {
+      const note = document.createElement('p');
+      note.className = 'hint';
+      note.textContent = 'Tek kolonda özel genişlik yok — kolon sayısını artırın.';
+      sc.appendChild(note);
+    }
 
     const s2 = section(pane, 'Teslim varyantı');
     const sel = document.createElement('select');
@@ -356,6 +416,15 @@ export class Controls {
   updateDerived(d: Derived, diags: Diagnostic[], report: SolverReport): void {
     const p = this.getParams();
 
+    if (this.colRemainderEl) {
+      const last = d.columnWidths[d.columnWidths.length - 1] ?? 0;
+      const bad = last <= 0;
+      this.colRemainderEl.classList.toggle('col-remainder-bad', bad);
+      this.colRemainderEl.textContent = bad
+        ? `Son kolon (kalan): ${(last * 100).toFixed(1)} cm — TAŞMA! İlk kolonları daraltın.`
+        : `Son kolon (kalan): ${(last * 100).toFixed(1)} cm · Kolonlar: ${d.columnWidths.map((w) => (w * 100).toFixed(0)).join(' / ')} cm`;
+    }
+
     if (this.gapAutoLabel) {
       this.gapAutoLabel.textContent =
         p.transitionGapOverride === null
@@ -368,7 +437,7 @@ export class Controls {
       const stats = this.groupStatEls.get(g.id);
       if (stats) {
         stats.textContent = g.enabled
-          ? `${gd.nRows} raf · ${gd.channelsPerRow}k/raf · ${gd.channels} kanal · ${gd.meds.toLocaleString('tr-TR')} ilaç`
+          ? `${gd.nRows} raf · k/kolon ${gd.channelsPerColumn.join('/')} · ${gd.channels} kanal · ${gd.meds.toLocaleString('tr-TR')} ilaç`
           : 'devre dışı';
       }
       const svgHost = this.groupSvgEls.get(g.id);
@@ -434,9 +503,10 @@ export class Controls {
 
 // ---------- Grup kartı mini kesit SVG önizlemesi (SPEC §5, Image 2 tarzı) ----------
 function sectionSvg(g: GroupParams, d: Derived, diags: Diagnostic[]): string {
-  // okunabilirlik için en fazla 3 oluk çiz
+  // okunabilirlik için en fazla 3 oluk çiz (en geniş kolon referans alınır)
   const xPitch = g.channelInnerWidth + 2 * g.flangeThickness;
-  const previewW = Math.min(d.columnWidth, 3 * xPitch + 1e-6);
+  const widest = d.columnWidths.length > 0 ? Math.max(...d.columnWidths) : d.columnWidth;
+  const previewW = Math.min(widest, 3 * xPitch + 1e-6);
   const sec = buildProfileShape(
     {
       channelInnerWidth: g.channelInnerWidth,

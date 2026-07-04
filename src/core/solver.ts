@@ -170,8 +170,8 @@ export function solve(p: CabinetParams, d: Derived): SolverReport {
               ? `${g.label} grubunu tamamen kaldır (${g.nRows}→0 raf)`
               : `${g.label} grubunu ${g.nRows}→${g.nRows - k} rafa indir`,
           detail: `Bu gruptan ${k} raf çıkmak istifi ~${cm(k * gd.pitch)} cm kısaltır (pitch ${cm(gd.pitch)} cm).`,
-          sideEffect: `−${k * gd.channelsPerRow * p.nColumns} kanal, −${
-            k * gd.channelsPerRow * p.nColumns * gd.medsPerChannel
+          sideEffect: `−${k * gd.rowChannels} kanal, −${
+            k * gd.rowChannels * gd.medsPerChannel
           } ilaç (toplam ${d.totalMeds}→${meds}).`,
           patch: {},
           groupsPatch: groups,
@@ -196,7 +196,7 @@ export function solve(p: CabinetParams, d: Derived): SolverReport {
     for (const g of p.groups) {
       if (!g.enabled || g.nRows <= 0) continue;
       const gd = d.groups[p.groups.indexOf(g)];
-      const perRow = gd.channelsPerRow * p.nColumns * gd.medsPerChannel;
+      const perRow = gd.rowChannels * gd.medsPerChannel;
       if (perRow > 0 && (best === null || perRow > best.perRow)) best = { g, perRow };
     }
     if (best) {

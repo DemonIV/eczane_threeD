@@ -24,11 +24,17 @@ export interface GroupParams {
 
 export type DeliveryKind = 'side_bin' | 'conveyor';
 
+export type ColumnMode = 'equal' | 'custom';
+
 export interface CabinetParams {
   W: number; // m
   H: number; // m
   D: number; // m
   nColumns: number;
+  /** equal = kullanılabilir genişlik eşit bölünür; custom = ilk n-1 kolon elle, son kolon kalan. */
+  columnMode: ColumnMode;
+  /** m — custom modda ilk (nColumns-1) değer kullanılır; eksikse eşit pay varsayılır. */
+  columnWidths: number[];
   topMargin: number; // m
   bottomMargin: number; // m
   sideMargin: number; // m
@@ -53,9 +59,10 @@ export interface GroupDerived {
   sectionHeight: number; // m — flangeHeight + baseThickness
   pitch: number; // m — sectionHeight / cosα (nested dikey adım)
   xPitch: number; // m — channelInnerWidth + 2*flangeThickness
-  channelsPerRow: number; // bir raftaki (bir kolondaki) oluk sayısı
+  channelsPerColumn: number[]; // kolon başına oluk sayısı (kolon genişliği farklıysa farklı)
+  rowChannels: number; // bir kat seviyesindeki toplam oluk = Σ channelsPerColumn
   medsPerChannel: number; // floor(L / med.len)
-  channels: number; // nRows * channelsPerRow * nColumns
+  channels: number; // nRows * rowChannels
   meds: number; // channels * medsPerChannel
   stackShare: number; // m — nRows * pitch (istifteki dikey pay)
 }
@@ -72,7 +79,9 @@ export interface Derived {
   rise: number; // m — L * sinα
   usableHeight: number; // m
   usableWidth: number; // m
-  columnWidth: number; // m
+  columnWidth: number; // m — ortalama (uW/n); önizleme/geri-uyumluluk için
+  columnWidths: number[]; // m — her kolonun gerçek genişliği (equal modda hepsi eşit)
+  columnLefts: number[]; // m — her kolonun sol kenarının x konumu (kabin merkezine göre)
   transitionGap: number; // m — grup sınırı geçiş payı (auto veya override)
   cosTilt: number;
   sinTilt: number;

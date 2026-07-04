@@ -49,6 +49,8 @@ export function defaultParams(): CabinetParams {
     H: 2.5,
     D: 1.25,
     nColumns: 3,
+    columnMode: 'equal',
+    columnWidths: [],
     topMargin: 0.3,
     bottomMargin: 0.3,
     sideMargin: 0.3,

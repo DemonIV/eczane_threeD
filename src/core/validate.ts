@@ -36,6 +36,20 @@ export function validate(p: CabinetParams, d: Derived): Diagnostic[] {
     });
   }
 
+  // --- Özel kolon genişlikleri: son kolon = kalan; kalan ≤ 0 ise taşma ---
+  if (p.columnMode === 'custom' && p.nColumns > 1) {
+    const last = d.columnWidths[d.columnWidths.length - 1] ?? 0;
+    if (last <= 0) {
+      out.push({
+        level: 'error',
+        code: 'COLUMN_WIDTHS_OVERFLOW',
+        message:
+          `Kolon genişlikleri kullanılabilir genişliği aşıyor: son kolona ${cm(last)} cm kalıyor. ` +
+          `İlk ${p.nColumns - 1} kolonun toplamını ${cm(d.usableWidth)} cm altına indirin.`,
+      });
+    }
+  }
+
   // --- İstif sığma (SPEC §2.3) ---
   if (d.totalRows > 0) {
     if (!d.fits) {
@@ -113,15 +127,29 @@ export function validate(p: CabinetParams, d: Derived): Diagnostic[] {
         message: `${g.label}: ilaç boyu ${cm(g.med.len)} cm > kanal boyu ${cm(d.L)} cm.`,
       });
     }
-    if (gd.channelsPerRow < 1) {
+    if (gd.rowChannels < 1) {
       out.push({
         level: 'error',
         code: 'NO_CHANNEL_FITS',
         groupId: g.id,
         message:
-          `${g.label}: kolon genişliği ${cm(d.columnWidth)} cm, tek oluk adımı ${cm(gd.xPitch)} cm — ` +
-          `hiç kanal sığmıyor.`,
+          `${g.label}: hiçbir kolona oluk sığmıyor (oluk adımı ${cm(gd.xPitch)} cm, ` +
+          `kolonlar: ${d.columnWidths.map((w) => cm(w)).join('/')} cm).`,
       });
+    } else {
+      const empty = gd.channelsPerColumn
+        .map((n, i) => (n === 0 ? i + 1 : 0))
+        .filter((x) => x > 0);
+      if (empty.length > 0) {
+        out.push({
+          level: 'warn',
+          code: 'COLUMN_TOO_NARROW',
+          groupId: g.id,
+          message:
+            `${g.label}: ${empty.join('. ve ')}. kolon bu grubun oluğu için çok dar ` +
+            `(oluk adımı ${cm(gd.xPitch)} cm) — o kolonda bu grup 0 kanal.`,
+        });
+      }
     }
   }
 
