@@ -68,6 +68,7 @@ const TABS = [
   { id: 'gruplar', label: 'Gruplar' },
   { id: 'global', label: 'Global' },
   { id: 'hedef', label: 'Hedef' },
+  { id: 'ai', label: 'AI ✦' },
 ] as const;
 type TabId = (typeof TABS)[number]['id'];
 
@@ -89,6 +90,8 @@ export class Controls {
     private getParams: () => CabinetParams,
     private getDerived: () => Derived,
     private cb: ControlsCallbacks,
+    /** AI sekmesi pane'i her build'de bu callback'e verilir (AiPanel monte eder). */
+    private onAiPane?: (el: HTMLElement) => void,
   ) {}
 
   build(): void {
@@ -125,6 +128,7 @@ export class Controls {
     this.buildGruplar(this.panes.get('gruplar')!, p);
     this.buildGlobal(this.panes.get('global')!, p);
     this.buildHedef(this.panes.get('hedef')!, p);
+    this.onAiPane?.(this.panes.get('ai')!);
   }
 
   // ---------- Kabin ----------

@@ -11,9 +11,13 @@ import { RobotRig } from './scene/RobotRig';
 import { Delivery } from './scene/Delivery';
 import { Controls } from './ui/Controls';
 import { Metrics, renderStatusChip } from './ui/Metrics';
+import { AiPanel } from './ui/AiPanel';
+import type { Diagnostic, SolverReport } from './core/types';
 
 let params: CabinetParams = defaultParams();
 let derived: Derived = computeDerived(params);
+let lastDiags: Diagnostic[] = [];
+let lastReport: SolverReport = solve(params, derived);
 
 const canvas = document.getElementById('c3d') as HTMLCanvasElement;
 const scene = new SceneManager(canvas);
@@ -37,13 +41,25 @@ function scheduleSceneUpdate(): void {
 
 function recompute(): void {
   derived = computeDerived(params);
-  const diags = validate(params, derived);
-  const report = solve(params, derived);
-  metrics.render(params, derived, diags);
+  lastDiags = validate(params, derived);
+  lastReport = solve(params, derived);
+  metrics.render(params, derived, lastDiags);
   renderStatusChip(statusChip, derived);
-  controls.updateDerived(derived, diags, report);
+  controls.updateDerived(derived, lastDiags, lastReport);
   scheduleSceneUpdate();
 }
+
+const aiPanel = new AiPanel({
+  getParams: () => params,
+  getDerived: () => derived,
+  getDiags: () => lastDiags,
+  getReport: () => lastReport,
+  onPatch(patch, groups, opts) {
+    params = { ...params, ...patch, groups: groups ?? params.groups };
+    if (opts?.rebuild) controls.build();
+    recompute();
+  },
+});
 
 const controls = new Controls(
   document.getElementById('tabs')!,
@@ -57,6 +73,7 @@ const controls = new Controls(
       recompute();
     },
   },
+  (el) => aiPanel.mount(el),
 );
 
 // --- Viewport butonları ---
