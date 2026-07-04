@@ -5,6 +5,10 @@ services:
     runtime: static
     buildCommand: npm ci && npm run build
     staticPublishPath: dist
+    envVars:
+      # Site geneli Gemini anahtarı — değeri Render dashboard'da girilir (repoda tutulmaz)
+      - key: VITE_GEMINI_API_KEY
+        sync: false
     routes:
       - type: rewrite
         source: /*

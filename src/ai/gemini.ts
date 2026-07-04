@@ -12,6 +12,14 @@ import type {
 const MODEL = 'gemini-2.5-flash';
 const ENDPOINT = `https://generativelanguage.googleapis.com/v1beta/models/${MODEL}:generateContent`;
 
+/**
+ * Site geneli varsayılan anahtar: Render dashboard'da VITE_GEMINI_API_KEY ortam
+ * değişkeni olarak tanımlanır, build sırasında bundle'a gömülür (repo'da tutulmaz —
+ * halka açık repoda anahtar GitHub secret-scanning tarafından iptal ettirilebilir).
+ */
+export const DEFAULT_API_KEY: string =
+  (import.meta.env.VITE_GEMINI_API_KEY as string | undefined) ?? '';
+
 export interface AiChange {
   alan: string;
   deger: number;
@@ -126,6 +134,7 @@ FİZİK KURALLARI (kesin, pazarlıksız):
 - İlaç oluğa sığmalı: en ≤ içGenişlik-0.5cm, yükseklik ≤ flanşYüksekliği-0.5cm, boy ≤ L.
 
 GÖREV: Kullanıcının hedefini analiz et, mevcut durumla kıyasla, uygulanabilir değişiklik önerileri üret. Her öneride trade-off'u (yan etkiyi) açıkça söyle. Sayıları verilen JSON'dan al, uydurma. Kaba hesap yaparken formülleri kullan.
+ÖNEMLİ: Kullanıcı emir kipinde somut bir değişiklik istiyorsa (örn. "payları 30 cm yap", "eğimi 22 yap"), İLK öneri tam olarak bu değişikliklerin kendisi olsun ("degisiklikler" dolu) — sistem ilk öneriyi otomatik uygular. Ek iyileştirmeler sonraki öneriler olarak gelsin.
 
 Değişiklik önerirken "degisiklikler" alanında SADECE şu alan adlarını kullan:${FIELD_HELP}
 
@@ -196,7 +205,17 @@ export async function askGemini(
       throw new Error(`API anahtarı geçersiz veya yetkisiz (HTTP ${res.status}).`);
     }
     if (res.status === 429) {
-      throw new Error('Hız limiti aşıldı — biraz bekleyip tekrar deneyin (ücretsiz katman kotası).');
+      let apiMsg = '';
+      try {
+        apiMsg = (JSON.parse(body)?.error?.message as string) ?? '';
+      } catch {
+        /* gövde JSON değilse genel mesajla yetin */
+      }
+      throw new Error(
+        apiMsg.includes('prepayment') || apiMsg.includes('credits')
+          ? 'Gemini kotası/kredisi tükenmiş — https://ai.studio/projects adresinden kredi yükleyin veya ücretsiz katmanlı bir anahtar kullanın.'
+          : `Hız limiti aşıldı — biraz bekleyip tekrar deneyin. ${apiMsg}`,
+      );
     }
     throw new Error(`Gemini hatası (HTTP ${res.status}): ${body.slice(0, 200)}`);
   }
