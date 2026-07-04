@@ -1,0 +1,28 @@
+<!doctype html>
+<html lang="tr">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+    <meta name="theme-color" content="#14181f" />
+    <title>Eczane İlaç Kabini — 3D Parametrik Simülatör</title>
+  </head>
+  <body>
+    <div id="app">
+      <header id="topbar">
+        <h1>Eczane Kabin Simülatörü</h1>
+        <div id="status-chip" class="status"></div>
+      </header>
+      <div id="viewport">
+        <canvas id="c3d"></canvas>
+        <div class="vp-overlay vp-tl" id="cam-presets"></div>
+        <div class="vp-overlay vp-tr" id="vp-actions"></div>
+      </div>
+      <div id="panel">
+        <div id="metrics"></div>
+        <nav id="tabs"></nav>
+        <div id="tab-content"></div>
+      </div>
+    </div>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>
