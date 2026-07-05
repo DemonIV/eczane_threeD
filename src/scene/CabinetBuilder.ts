@@ -9,7 +9,10 @@ import type { CabinetParams, Derived } from '../core/types';
 const MAX_BOX_INSTANCES = 60000;
 
 const ALU = new THREE.MeshStandardMaterial({ color: 0xb9bec7, metalness: 0.75, roughness: 0.35 });
-const ALU_DARK = new THREE.MeshStandardMaterial({ color: 0x7d838d, metalness: 0.7, roughness: 0.45 });
+// Raf malzemesi beyaz taban: gerçek renk instance başına verilir (normal gri / taşan kırmızı).
+const SHELF_MAT = new THREE.MeshStandardMaterial({ color: 0xffffff, metalness: 0.7, roughness: 0.45 });
+const SHELF_COLOR = new THREE.Color(0x7d838d);
+const SHELF_COLOR_OVERFLOW = new THREE.Color(0xd84040);
 const PANEL = new THREE.MeshStandardMaterial({
   color: 0x8fa3b8,
   transparent: true,
@@ -53,9 +56,15 @@ function makeTextSprite(text: string, color = '#e8edf5'): THREE.Sprite {
 }
 
 /** İki nokta arası ölçü çizgisi: uç çizgileri + etiket. */
-function makeDimension(a: THREE.Vector3, b: THREE.Vector3, label: string, tickDir: THREE.Vector3): THREE.Group {
+function makeDimension(
+  a: THREE.Vector3,
+  b: THREE.Vector3,
+  label: string,
+  tickDir: THREE.Vector3,
+  color = 0xffc857,
+): THREE.Group {
   const g = new THREE.Group();
-  const mat = new THREE.LineBasicMaterial({ color: 0xffc857 });
+  const mat = new THREE.LineBasicMaterial({ color });
   const tick = tickDir.clone().normalize().multiplyScalar(0.06);
   const pts = [
     a.clone().add(tick), a.clone().sub(tick),
@@ -64,7 +73,7 @@ function makeDimension(a: THREE.Vector3, b: THREE.Vector3, label: string, tickDi
   ];
   const geo = new THREE.BufferGeometry().setFromPoints(pts);
   g.add(new THREE.LineSegments(geo, mat));
-  const spr = makeTextSprite(label, '#ffc857');
+  const spr = makeTextSprite(label, `#${color.toString(16).padStart(6, '0')}`);
   spr.position.copy(a).lerp(b, 0.5).add(tick.clone().multiplyScalar(2.2));
   g.add(spr);
   return g;
@@ -215,16 +224,19 @@ export class CabinetBuilder {
         const shape = new THREE.Shape(section.points.map((q) => new THREE.Vector2(q.x, q.y)));
         const geo = new THREE.ExtrudeGeometry(shape, { depth: d.L, bevelEnabled: false });
         this.disposables.push(geo);
-        const shelfMesh = new THREE.InstancedMesh(geo, ALU_DARK, shelfRows.length * cols.length);
+        const shelfMesh = new THREE.InstancedMesh(geo, SHELF_MAT, shelfRows.length * cols.length);
 
         let si = 0;
         for (const shelf of shelfRows) {
+          // Tavanı delen raf (arka ucu izinli tavanın üstünde) kırmızı gösterilir.
+          const overflows = shelf.frontY + d.rise > d.ceilingLimit + 1e-9;
           for (const c of cols) {
             const xLeft = d.columnLefts[c] + (d.columnWidths[c] - section.totalWidth) / 2;
             // raf: yerel (0,0,0)=arka-alt köşe → dünya (xLeft, frontY+rise, zBack), X ekseninde +α
             const shelfM = new THREE.Matrix4()
               .makeTranslation(xLeft, shelf.frontY + d.rise, zBack)
               .multiply(rot);
+            shelfMesh.setColorAt(si, overflows ? SHELF_COLOR_OVERFLOW : SHELF_COLOR);
             shelfMesh.setMatrixAt(si++, shelfM);
 
             for (let k = 0; k < cnt; k++) {
@@ -243,6 +255,7 @@ export class CabinetBuilder {
           }
         }
         shelfMesh.instanceMatrix.needsUpdate = true;
+        if (shelfMesh.instanceColor) shelfMesh.instanceColor.needsUpdate = true;
         this.disposables.push(shelfMesh);
         this.content.add(shelfMesh);
       }
@@ -303,5 +316,47 @@ export class CabinetBuilder {
     this.dims.add(
       new THREE.Line(uGeo, new THREE.LineBasicMaterial({ color: 0x5ad18b, transparent: true, opacity: 0.6 })),
     );
+
+    // --- Taşma göstergeleri (kırmızı) ---
+    const RED = 0xff5d5d;
+    if (d.ceilingViolation) {
+      // İzinli tavan çizgisi (yan görünüş): sağ yüz boyunca kesikli kırmızı hat.
+      const cGeo = new THREE.BufferGeometry().setFromPoints([
+        new THREE.Vector3(W / 2 + 0.002, d.ceilingLimit, -D / 2),
+        new THREE.Vector3(W / 2 + 0.002, d.ceilingLimit, D / 2),
+      ]);
+      this.disposables.push(cGeo);
+      const cLine = new THREE.Line(
+        cGeo,
+        new THREE.LineDashedMaterial({ color: RED, dashSize: 0.05, gapSize: 0.035 }),
+      );
+      cLine.computeLineDistances();
+      this.dims.add(cLine);
+      // Tavan delme miktarı: en üst rafın arka ucu ↔ izinli tavan (arka tarafta, yan görünüş).
+      const xd = W / 2 + 0.18;
+      const zd = -D / 2 + 0.03;
+      this.dims.add(
+        makeDimension(
+          new THREE.Vector3(xd, d.ceilingLimit, zd),
+          new THREE.Vector3(xd, d.topRowBackY, zd),
+          `TAVAN +${(d.ceilingOverflow * 100).toFixed(1)} cm`,
+          new THREE.Vector3(1, 0, 0),
+          RED,
+        ),
+      );
+    }
+    if (d.deficit > 0) {
+      // İstif açığı: gerekli istif tepesi ↔ kullanılabilir bölge tepesi (ön yüz).
+      const xd = W / 2 + 0.25;
+      this.dims.add(
+        makeDimension(
+          new THREE.Vector3(xd, p.bottomMargin + d.usableHeight, zF),
+          new THREE.Vector3(xd, p.bottomMargin + d.stackHeight, zF),
+          `İSTİF +${(d.deficit * 100).toFixed(1)} cm`,
+          new THREE.Vector3(1, 0, 0),
+          RED,
+        ),
+      );
+    }
   }
 }

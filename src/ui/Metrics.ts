@@ -66,7 +66,7 @@ export class Metrics {
       },
       {
         label: 'Tavan',
-        value: d.ceilingViolation ? '✗ deliyor' : '✓',
+        value: d.ceilingViolation ? `✗ +${cm(d.ceilingOverflow)} cm` : '✓',
         bad: d.ceilingViolation,
         title:
           ceiling?.message ??
@@ -122,7 +122,9 @@ export function renderStatusChip(el: HTMLElement, d: Derived): void {
     el.className = 'status ok';
     el.textContent = `✓ ${d.totalRows} raf sığıyor`;
   } else {
+    // Taşma iki türlü olabilir: istif açığı (deficit) ve/veya tavan delme (ceilingOverflow).
+    const over = Math.max(d.deficit, d.ceilingOverflow);
     el.className = 'status bad';
-    el.textContent = `✗ ${d.totalRows} raf sığmıyor — eksik ${(d.deficit * 100).toFixed(0)} cm`;
+    el.textContent = `✗ ${d.totalRows} raf sığmıyor — taşma ${(over * 100).toFixed(1)} cm`;
   }
 }

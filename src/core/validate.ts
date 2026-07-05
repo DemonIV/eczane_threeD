@@ -75,7 +75,7 @@ export function validate(p: CabinetParams, d: Derived): Diagnostic[] {
       level: 'error',
       code: 'TOP_ROW_CEILING',
       message:
-        `En üst rafın arka ucu tavanı deliyor: arka uç ${cm(d.topRowBackY)} cm, ` +
+        `En üst rafın arka ucu tavanı ${cm(d.ceilingOverflow)} cm deliyor: arka uç ${cm(d.topRowBackY)} cm, ` +
         `izinli tavan ${cm(d.ceilingLimit)} cm (üst pay + servis kesimi düşülmüş).`,
     });
   }

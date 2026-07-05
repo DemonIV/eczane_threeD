@@ -186,6 +186,7 @@ export function computeDerived(p: CabinetParams): Derived {
   const ceilingLimit = p.H - p.topMargin - p.topServiceCut;
   const topRowBackY = shelves.length === 0 ? 0 : lastFrontY + rise;
   const ceilingViolation = topRowBackY > ceilingLimit + EPS;
+  const ceilingOverflow = ceilingViolation ? topRowBackY - ceilingLimit : 0;
 
   return {
     L,
@@ -210,5 +211,6 @@ export function computeDerived(p: CabinetParams): Derived {
     topRowBackY,
     ceilingLimit,
     ceilingViolation,
+    ceilingOverflow,
   };
 }

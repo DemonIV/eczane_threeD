@@ -97,6 +97,7 @@ export interface Derived {
   topRowBackY: number; // m — en üst rafın arka ucu (zeminden)
   ceilingLimit: number; // m — H - topMargin - topServiceCut
   ceilingViolation: boolean; // SPEC §2.6 en-üst-raf-tavan kontrolü
+  ceilingOverflow: number; // m — tavanı delme miktarı (>0 ihlalde, sığıyorsa 0)
 }
 
 // ---- Diagnostik ----

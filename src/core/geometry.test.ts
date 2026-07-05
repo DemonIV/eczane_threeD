@@ -158,6 +158,17 @@ describe('yerleşim ve tavan kontrolü', () => {
     expect(d.topRowBackY).toBeGreaterThan(d.ceilingLimit);
   });
 
+  it('ceilingOverflow: ihlalde topRowBackY−ceilingLimit, sığarken 0', () => {
+    const bad = computeDerived(defaultParams());
+    expect(bad.ceilingOverflow).toBeCloseTo(bad.topRowBackY - bad.ceilingLimit, 9);
+    expect(bad.ceilingOverflow).toBeGreaterThan(0);
+    const p = defaultParams();
+    p.groups = p.groups.map((g) => ({ ...g, nRows: 3 })); // 9 raf rahat sığar
+    const ok = computeDerived(p);
+    expect(ok.ceilingViolation).toBe(false);
+    expect(ok.ceilingOverflow).toBe(0);
+  });
+
   it('devre dışı grup kapasiteye ve istife katılmaz', () => {
     const p = defaultParams();
     p.groups = p.groups.map((g) => (g.id === 'large' ? { ...g, enabled: false } : g));
